@@ -463,6 +463,7 @@ sentry {
 }
 
 dependencies {
+    // HoneyFlix: the honey edition gets everything the full edition gets (honeyImplementation mirrors fullImplementation).
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
     val composeBom = platform("androidx.compose:compose-bom:2026.05.01")
 
@@ -558,6 +559,7 @@ dependencies {
         "libs/lib-decoder-mpegh-release.aar"
     ))
     add("fullImplementation", files("libs/lib-decoder-iamf-release.aar"))
+    add("honeyImplementation", files("libs/lib-decoder-iamf-release.aar"))
     implementation(files("libs/lib-nuvio-engine-android-0.1.6.aar"))
     if (useLocalFfmpegDecoder) {
         implementation(project(":ffmpeg-decoder-downmix"))
@@ -578,12 +580,25 @@ dependencies {
     implementation(libs.gson)
 
     add("fullImplementation", files("libs/quickjs-kt-android-1.0.5-nuvio.aar"))
+    add("honeyImplementation", files("libs/quickjs-kt-android-1.0.5-nuvio.aar"))
     add("fullImplementation", libs.jsoup)
+    add("honeyImplementation", libs.jsoup)
     add("fullImplementation", "com.fasterxml.jackson.core:jackson-databind:2.17.0")
+    add("honeyImplementation", "com.fasterxml.jackson.core:jackson-databind:2.17.0")
     add("fullImplementation", "com.fasterxml.jackson.module:jackson-module-kotlin:2.17.0")
+    add("honeyImplementation", "com.fasterxml.jackson.module:jackson-module-kotlin:2.17.0")
     add("fullImplementation", libs.nicehttp)
+    add("honeyImplementation", libs.nicehttp)
     add("fullImplementation", libs.conscrypt.android)
+    add("honeyImplementation", libs.conscrypt.android)
     add("fullImplementation", "com.github.recloudstream.cloudstream:library:${libs.versions.cloudstream.get()}") {
+        exclude(group = "org.mozilla", module = "rhino")
+        exclude(group = "com.github.AmarullisVFX", module = "newpipeextractor")
+        exclude(group = "com.github.AmaryllisVFX", module = "newpipeextractor")
+        exclude(group = "com.github.AmaryllisVFX.newpipeextractor")
+        exclude(group = "info.debatty", module = "java-string-similarity")
+    }
+    add("honeyImplementation", "com.github.recloudstream.cloudstream:library:${libs.versions.cloudstream.get()}") {
         exclude(group = "org.mozilla", module = "rhino")
         exclude(group = "com.github.AmarullisVFX", module = "newpipeextractor")
         exclude(group = "com.github.AmaryllisVFX", module = "newpipeextractor")
@@ -595,6 +610,7 @@ dependencies {
     implementation(libs.markdown.renderer.m3)
 
     add("fullImplementation", libs.crypto.js)
+    add("honeyImplementation", libs.crypto.js)
     // QR code + local server for addon management
     implementation(libs.nanohttpd)
     implementation(libs.zxing.core)
@@ -617,6 +633,7 @@ dependencies {
     debugImplementation("androidx.compose.runtime:runtime-tracing")
 
     add("fullImplementation", "org.webjars.npm:crypto-js:4.2.0")
+    add("honeyImplementation", "org.webjars.npm:crypto-js:4.2.0")
 
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
