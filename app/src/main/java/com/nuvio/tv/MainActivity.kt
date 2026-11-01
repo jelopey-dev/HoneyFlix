@@ -363,6 +363,17 @@ open class MainActivity : ComponentActivity() {
     }
 
     @OptIn(ExperimentalFoundationApi::class)
+    private fun showHoneyIntro() {
+        val overlay = androidx.compose.ui.platform.ComposeView(this)
+        overlay.setContent {
+            com.honeystream.flix.HoneyIntro(onDone = {
+                (overlay.parent as? android.view.ViewGroup)?.removeView(overlay)
+            })
+        }
+        addContentView(overlay, android.view.ViewGroup.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
@@ -1280,6 +1291,9 @@ open class MainActivity : ComponentActivity() {
                 }
             }
         }
+
+        // HoneyFlix: our bees-into-the-honeycomb intro, layered over the app on a fresh start.
+        if (BuildConfig.FLAVOR == "honey" && savedInstanceState == null) showHoneyIntro()
 
         jankStats = JankStats.createAndTrack(window) { frameData ->
             if (frameData.isJank) {
