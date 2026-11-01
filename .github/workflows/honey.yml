@@ -1,0 +1,91 @@
+name: HoneyFlix build
+
+# Builds HoneyFlix (the "honey" edition) from the honey branch and publishes the APK
+# as a release on this repo, which HoneyFlix's in-app updater and the TV download link use.
+on:
+  push:
+    branches: [honey]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: honeyflix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Local settings (no Nuvio account keys, no Dolby Vision native build)
+        run: |
+          cat > local.properties <<'EOF'
+          DOVI_NATIVE_ENABLED=false
+          DOVI_EXTRACTOR_HOOK_READY=false
+          DOVI_ENABLE_REAL_LINK=false
+          USE_LOCAL_FFMPEG_DECODER=false
+          EOF
+
+      - name: Signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.HONEYFLIX_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::Add the HONEYFLIX_KEYSTORE_BASE64 and HONEYFLIX_KEYSTORE_PASSWORD secrets (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/honeyflix.jks"
+
+      - name: Build HoneyFlix
+        env:
+          NUVIO_RELEASE_STORE_FILE: ${{ runner.temp }}/honeyflix.jks
+          NUVIO_RELEASE_KEY_ALIAS: honeyflix
+          NUVIO_RELEASE_KEY_PASSWORD: ${{ secrets.HONEYFLIX_KEYSTORE_PASSWORD }}
+          NUVIO_RELEASE_STORE_PASSWORD: ${{ secrets.HONEYFLIX_KEYSTORE_PASSWORD }}
+        run: |
+          set -o pipefail
+          chmod +x gradlew
+          ./gradlew :app:assembleHoneyRelease --stacktrace 2>&1 | tee build.log || {
+            # Surface the real errors as annotations (logs aren't readable from the dev sandbox).
+            set +e
+            { grep -E "^e: " build.log | head -60
+              sed -n '/What went wrong/,/^\* Try/p' build.log | head -25
+              grep -vE "^> Task|^[[:space:]]+at |^$" build.log | tail -25
+            } | while IFS= read -r l; do echo "::error::$l"; done
+            exit 1
+          }
+
+      - name: Collect APK
+        id: apk
+        run: |
+          apk=$(ls app/build/outputs/apk/honey/release/*.apk | grep -v unsigned | head -1)
+          [ -n "$apk" ] || apk=$(ls app/build/outputs/apk/honey/release/*.apk | head -1)
+          cp "$apk" HoneyFlix.apk
+          ver=$(grep -m1 'versionName = ' app/build.gradle.kts | sed -E 's/.*"(.*)".*/\1/')
+          echo "tag=v${ver}-honey.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "ver=${ver}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: HoneyFlix-apk
+          path: HoneyFlix.apk
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.apk.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: HoneyFlix ${{ steps.apk.outputs.tag }}
+          body: "HoneyFlix build ${{ github.run_number }}, based on Nuvio TV ${{ steps.apk.outputs.ver }}. Install on TV: open this release's HoneyFlix.apk in Downloader."
+          files: HoneyFlix.apk
+          make_latest: true

@@ -84,7 +84,7 @@ object NuvioMotion {
             decelerate = LinearOutSlowInEasing,
             accelerate = CubicBezierEasing(0.4f, 0f, 1f, 1f)
         ),
-        focusScale = 1.02f,
+        focusScale = 1.07f, // HoneyFlix: clearer selection (Nuvio: 1.02)
         selectedScale = 1.01f,
         pressedScale = 0.98f,
         reducedMotionScale = 1f
@@ -106,8 +106,8 @@ object NuvioMotion {
 
 object NuvioFocus {
     val tokens = NuvioFocusTokens(
-        scale = 1.02f,
-        subtleScale = 1.01f,
+        scale = 1.07f, // HoneyFlix: clearer selection (Nuvio: 1.02)
+        subtleScale = 1.03f,
         pressedScale = 0.98f,
         disabledScale = 1f,
         scrollViewportTarget = 0.42f,

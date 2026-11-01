@@ -242,7 +242,7 @@ data class DrawerItem(
 )
 
 private data class MainUiPrefs(
-    val theme: AppTheme = AppTheme.WHITE,
+    val theme: AppTheme = com.nuvio.tv.domain.model.DefaultAppTheme,
     val customThemeColors: CustomThemeColors = CustomThemeColors.Default,
     val memberAccess: MemberAccess = MemberAccess.None,
     val font: AppFont = AppFont.INTER,
@@ -393,6 +393,7 @@ open class MainActivity : ComponentActivity() {
         val launchEpisodeTitle = intent?.getStringExtra("episodeTitle")
         captureDeepLinkIntent(intent)
 
+        if (BuildConfig.HONEY_KEY_DIAGNOSTICS) window.decorView.post { com.honeystream.diag.KeyDiagnostics.install(this) }
         setContent {
             var hasSelectedProfileThisSession by rememberSaveable { mutableStateOf(false) }
             var startupSession by remember { mutableIntStateOf(0) }
@@ -525,7 +526,7 @@ open class MainActivity : ComponentActivity() {
                     experienceModeDataStore.mode,
                 ) { themeAndAccess, font, amoledMode, amoledSurfacesMode, experienceMode ->
                     MainUiPrefs(
-                        theme = themeAndAccess.first.theme ?: AppTheme.WHITE,
+                        theme = themeAndAccess.first.theme ?: com.nuvio.tv.domain.model.DefaultAppTheme,
                         customThemeColors = themeAndAccess.first.customColors,
                         memberAccess = themeAndAccess.second,
                         font = font,
@@ -668,7 +669,7 @@ open class MainActivity : ComponentActivity() {
                             .apply()
                     }
                     val activeTheme = mainUiPrefs.theme
-                    if (splashPreferencesReady && activeTheme != AppTheme.WHITE) {
+                    if (splashPreferencesReady && activeTheme != com.nuvio.tv.domain.model.DefaultAppTheme) {
                         splashPrefs.edit().putString("theme_$activeProfileId", activeTheme.name).apply()
                     } else if (splashPreferencesReady) {
                         splashPrefs.edit().remove("theme_$activeProfileId").apply()
@@ -687,7 +688,7 @@ open class MainActivity : ComponentActivity() {
                         ?: activeTheme.takeIf { splashPreferencesReady }
                         ?: splashPrefs.getString("theme_$activeProfileId", null)
                             ?.let { name -> AppTheme.entries.firstOrNull { it.name == name } }
-                        ?: AppTheme.WHITE
+                        ?: com.nuvio.tv.domain.model.DefaultAppTheme
                     SplashBackground(
                         profileColorHex = if (hasFocusedOverride) focusedSplashColor else (colorHex ?: fallbackColor),
                         backgroundUrl = resolvedBgUrl,
@@ -1349,7 +1350,19 @@ open class MainActivity : ComponentActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (!BuildConfig.HONEY_KEY_DIAGNOSTICS) return dispatchKeyEventInner(event)
+        val result = dispatchKeyEventInner(event)
+        com.honeystream.diag.KeyDiagnostics.record(this, event, lastKeyHandler, result)
+        return result
+    }
+
+    /** HoneyFlix diagnostics: which branch below took the key. */
+    private var lastKeyHandler = "app"
+
+    private fun dispatchKeyEventInner(event: KeyEvent): Boolean {
+        lastKeyHandler = "ambient screensaver"
         if (ambientIdleController.consumeKeyEvent(event)) return true
+        lastKeyHandler = "back handling"
         if (event.keyCode == KeyEvent.KEYCODE_BACK) {
             if (longPressBackHeld.value) {
                 if (event.action == KeyEvent.ACTION_UP) longPressBackHeld.value = false
@@ -1365,6 +1378,7 @@ open class MainActivity : ComponentActivity() {
             }
             return true
         }
+        lastKeyHandler = "screen"
         return super.dispatchKeyEvent(event)
     }
 

@@ -27,6 +27,23 @@ data class ThemeColorPalette(
 )
 
 object ThemeColors {
+    // ---- HoneyStream family palettes (same values as HoneyLive) ----
+    private fun honey(accent: Long, deep: Long, glow: Long, bg: Long, surface: Long, surfaceHi: Long) = ThemeColorPalette(
+        secondary = Color(accent), secondaryVariant = Color(deep),
+        onSecondary = Color(0xFF120D06), onSecondaryVariant = Color(0xFF120D06),
+        focusRing = Color(glow), focusBackground = Color(surfaceHi),
+        background = Color(bg), backgroundElevated = Color(surface), backgroundCard = Color(surface),
+        surface = Color(surface), surfaceVariant = Color(surfaceHi), panel = Color(surface),
+        field = Color(surfaceHi), menu = Color(surface), modal = Color(surface),
+    )
+    val Honey = honey(0xFFF5A623, 0xFFD9820B, 0xFFFFC94A, 0xFF120D06, 0xFF1E160A, 0xFF2E2210)
+    val Halloween = honey(0xFFFF7A1A, 0xFFD9530B, 0xFFFFB347, 0xFF0E0812, 0xFF1C1024, 0xFF2C1A38)
+    val Autumn = honey(0xFFE07B39, 0xFFB5541C, 0xFFF4A261, 0xFF140C07, 0xFF22150D, 0xFF332014)
+    val Holidays = honey(0xFFE5484D, 0xFFB8282E, 0xFFFF7B7F, 0xFF07120D, 0xFF0F2119, 0xFF173225)
+    val Frost = honey(0xFF7FD3FF, 0xFF3FA7E0, 0xFFB5E6FF, 0xFF070E16, 0xFF0F1C2A, 0xFF17293D)
+    val Spring = honey(0xFF8CD867, 0xFF5BAA3A, 0xFFB7EE96, 0xFF0B130C, 0xFF152317, 0xFF203421)
+    val Summer = honey(0xFFFFD23F, 0xFFE0A800, 0xFFFFE680, 0xFF0F0D04, 0xFF1D1A0B, 0xFF2D2812)
+
     val Crimson = ThemeColorPalette(
         secondary = NuvioPrimitives.red500,
         secondaryVariant = NuvioPrimitives.red600,
@@ -96,6 +113,13 @@ object ThemeColors {
         customColors: CustomThemeColors = CustomThemeColors.Default
     ): ThemeColorPalette {
         return when (theme) {
+            AppTheme.HONEY -> Honey
+            AppTheme.HALLOWEEN -> Halloween
+            AppTheme.AUTUMN -> Autumn
+            AppTheme.HOLIDAYS -> Holidays
+            AppTheme.FROST -> Frost
+            AppTheme.SPRING -> Spring
+            AppTheme.SUMMER -> Summer
             AppTheme.CUSTOM -> customColors.toColorPalette()
             AppTheme.GOLD -> SupporterThemeColors.Gold
             AppTheme.JADE -> SupporterThemeColors.Jade

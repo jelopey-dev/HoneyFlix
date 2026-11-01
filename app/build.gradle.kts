@@ -178,6 +178,7 @@ android {
 
         // In-app updater (GitHub Releases)
         buildConfigField("String", "GITHUB_OWNER", "\"NuvioMedia\"")
+        buildConfigField("boolean", "HONEY_KEY_DIAGNOSTICS", "false")
         buildConfigField("String", "GITHUB_REPO", "\"NuvioTV\"")
     }
 
@@ -191,6 +192,21 @@ android {
             buildConfigField("boolean", "FEATURE_EXTERNAL_TRAILERS_ENABLED", "true")
             buildConfigField("boolean", "FEATURE_EXTERNAL_PLAYBACK_KEEP_ALIVE_ENABLED", "true")
             buildConfigField("boolean", "FEATURE_CUSTOM_SERVER_CONNECTIONS_ENABLED", "true")
+        }
+        // HoneyFlix (HoneyStream family): the complete Nuvio app, rebranded, updating from HoneyFlix's own releases.
+        create("honey") {
+            dimension = "distribution"
+            applicationId = "com.honeystream.flix"
+            buildConfigField("boolean", "FEATURE_PLUGINS_ENABLED", "true")
+            buildConfigField("boolean", "FEATURE_IN_APP_UPDATES_ENABLED", "true")
+            buildConfigField("boolean", "FEATURE_IN_APP_TRAILERS_ENABLED", "true")
+            buildConfigField("boolean", "FEATURE_EXTERNAL_TRAILERS_ENABLED", "true")
+            buildConfigField("boolean", "FEATURE_EXTERNAL_PLAYBACK_KEEP_ALIVE_ENABLED", "true")
+            buildConfigField("boolean", "FEATURE_CUSTOM_SERVER_CONNECTIONS_ENABLED", "true")
+            buildConfigField("String", "GITHUB_OWNER", "\"jelopey-dev\"")
+            buildConfigField("String", "GITHUB_REPO", "\"HoneyFlix\"")
+            // Diagnostic on-screen readout of remote presses (for the onn 4K Pro navigation issue).
+            buildConfigField("boolean", "HONEY_KEY_DIAGNOSTICS", "true")
         }
         create("playstore") {
             dimension = "distribution"
@@ -338,6 +354,11 @@ android {
         getByName("main") {
             jniLibs.srcDirs("src/main/jniLibs")
         }
+        // HoneyFlix uses the complete edition's code, plus its own additions in src/honey.
+        getByName("honey") {
+            java.srcDirs("src/full/java", "src/honey/java")
+            manifest.srcFile("src/full/AndroidManifest.xml")
+        }
     }
 
     packaging {
@@ -367,8 +388,9 @@ androidComponents {
         val isPlaystore = variant.productFlavors.any { it.second == "playstore" }
         variant.applicationId.set(if (isPlaystore) "com.nuvio.appdebug" else "com.nuviodebug.com")
     }
-    // Only the full flavor ships the in-app updater.
-    onVariants(selector().withFlavor("distribution" to "full")) { variant ->
+    // Only the full flavor (and HoneyFlix, built from it) ships the in-app updater.
+    onVariants { variant ->
+        if (variant.productFlavors.none { it.second == "full" || it.second == "honey" }) return@onVariants
         // AGP makes no ART profile for debuggable variants, and ART ignores .dm files for them anyway.
         if (variant.debuggable) return@onVariants
         val variantName = variant.name.replaceFirstChar { it.uppercase() }
