@@ -197,6 +197,12 @@ android {
         create("honey") {
             dimension = "distribution"
             applicationId = "com.honeystream.flix"
+            // CI passes the build number so the app's version matches its release tag
+            // (v1.1.0-beta.9-honey.N); otherwise the updater thinks every install is out of date.
+            System.getenv("HONEY_BUILD")?.toIntOrNull()?.let { n ->
+                versionNameSuffix = "-honey.$n"
+                versionCode = 1072 * 1000 + n
+            }
             buildConfigField("boolean", "FEATURE_PLUGINS_ENABLED", "true")
             buildConfigField("boolean", "FEATURE_IN_APP_UPDATES_ENABLED", "true")
             buildConfigField("boolean", "FEATURE_IN_APP_TRAILERS_ENABLED", "true")

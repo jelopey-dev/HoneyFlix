@@ -52,6 +52,7 @@ jobs:
           NUVIO_RELEASE_KEY_ALIAS: honeyflix
           NUVIO_RELEASE_KEY_PASSWORD: ${{ secrets.HONEYFLIX_KEYSTORE_PASSWORD }}
           NUVIO_RELEASE_STORE_PASSWORD: ${{ secrets.HONEYFLIX_KEYSTORE_PASSWORD }}
+          HONEY_BUILD: ${{ github.run_number }}
         run: |
           set -o pipefail
           chmod +x gradlew

@@ -742,6 +742,8 @@ open class MainActivity : ComponentActivity() {
                     if (!surfaceContentReady) {
                         // Still loading auth state; nothing to show yet.
                     } else if (
+                        // HoneyFlix has no Nuvio cloud account, so skip the QR sign-in on first launch.
+                        BuildConfig.FLAVOR != "honey" &&
                         hasSeenAuthQrOnFirstLaunch == false &&
                         authState !is AuthState.FullAccount &&
                         !onboardingCompletedThisSession
