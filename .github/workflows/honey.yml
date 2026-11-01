@@ -68,8 +68,11 @@ jobs:
       - name: Collect APK
         id: apk
         run: |
-          apk=$(ls app/build/outputs/apk/honey/release/*.apk | grep -v unsigned | head -1)
-          [ -n "$apk" ] || apk=$(ls app/build/outputs/apk/honey/release/*.apk | head -1)
+          ls -la app/build/outputs/apk/honey/release/
+          # Nuvio splits APKs by processor type; ship the universal one so every TV box can install it
+          # (the onn 4K Pro and many Google TV boxes run a 32-bit system and reject the arm64-only APK).
+          apk=$(ls app/build/outputs/apk/honey/release/*universal*.apk | grep -v unsigned | head -1)
+          [ -n "$apk" ] || { echo "::error::No universal APK was built"; exit 1; }
           cp "$apk" HoneyFlix.apk
           ver=$(grep -m1 'versionName = ' app/build.gradle.kts | sed -E 's/.*"(.*)".*/\1/')
           echo "tag=v${ver}-honey.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
