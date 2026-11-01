@@ -362,7 +362,6 @@ open class MainActivity : ComponentActivity() {
         }
     }
 
-    @OptIn(ExperimentalFoundationApi::class)
     private fun showHoneyIntro() {
         val overlay = androidx.compose.ui.platform.ComposeView(this)
         overlay.setContent {
@@ -374,6 +373,7 @@ open class MainActivity : ComponentActivity() {
             android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.MATCH_PARENT))
     }
 
+    @OptIn(ExperimentalFoundationApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
