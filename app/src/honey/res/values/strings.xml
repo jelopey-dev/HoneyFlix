@@ -18,7 +18,6 @@
     <string name="experience_mode_choose_title">Choose your HoneyFlix experience</string>
     <string name="advanced_nuvio_focus_scroll">HoneyFlix Focus Scrolling</string>
     <string name="advanced_nuvio_focus_scroll_subtitle">Use HoneyFlix\'s custom global focus scroll animation and positioning.</string>
-    <string name="sponsors_detail_copy">Sponsors help move HoneyFlix forward through support across the different parts of development.</string>
     <string name="playback_engine_exoplayer_desc">Best compatibility with current HoneyFlix features.</string>
     <string name="playback_engine_mvplayer_desc">Uses libmpv with HoneyFlix OSD controls. Experimental.</string>
     <string name="trakt_watch_progress_dialog_subtitle">Choose whether resume and continue watching should use Trakt or HoneyFlix Sync while Trakt scrobbling stays active.</string>
