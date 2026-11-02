@@ -212,7 +212,7 @@ android {
             buildConfigField("String", "GITHUB_OWNER", "\"jelopey-dev\"")
             buildConfigField("String", "GITHUB_REPO", "\"HoneyFlix\"")
             // Diagnostic on-screen readout of remote presses (for the onn 4K Pro navigation issue).
-            buildConfigField("boolean", "HONEY_KEY_DIAGNOSTICS", "true")
+            buildConfigField("boolean", "HONEY_KEY_DIAGNOSTICS", "false")
         }
         create("playstore") {
             dimension = "distribution"
