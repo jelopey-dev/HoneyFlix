@@ -38,4 +38,10 @@
     <string name="playback_player_internal_desc">Use HoneyFlixTV\'s built-in player</string>
     <string name="simkl_sync_info_description">HoneyFlix automatically checks Simkl at most once every %1$d minutes. Changes made through another app or the Simkl website may take that long to appear.</string>
     <string name="simkl_sync_info_manual">Changes made in HoneyFlix are sent to Simkl immediately. Use Sync now whenever you want HoneyFlix to check for remote changes sooner.</string>
+    <!-- Media servers: also IPTV providers (Xtream Codes) -->
+    <string name="settings_media_servers">Your provider &amp; media servers</string>
+    <string name="settings_media_servers_subtitle">Sign in to your IPTV provider (Xtream Codes) so its movies and shows play first, or connect Jellyfin or Emby.</string>
+    <string name="servers_add_description">Sign in with the server address, username and password for %1$s.</string>
+    <string name="servers_sign_in_subtitle">Enter the server address, username and password for %1$s. They stay on this TV.</string>
+    <string name="servers_address_hint">http://provider.example:8080</string>
 </resources>
