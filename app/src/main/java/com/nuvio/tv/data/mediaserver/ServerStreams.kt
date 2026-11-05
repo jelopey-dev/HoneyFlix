@@ -46,7 +46,8 @@ class ServerStreams @Inject constructor(
         return connections
             .filter { matcher.supports(it, request.kind) }
             .map { connection ->
-                source(connection, preferred = connection.useCatalogMetadata) {
+                // HoneyFlix: an IPTV provider (Xtream) is always tried first; add-ons follow as backups.
+                source(connection, preferred = connection.useCatalogMetadata || connection.providerId == "xtream") {
                     matcher.match(connection, request, forceRefresh).flatMap { candidates(it) }
                 }
             }
