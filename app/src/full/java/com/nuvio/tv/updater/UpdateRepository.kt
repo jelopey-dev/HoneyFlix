@@ -19,7 +19,11 @@ class UpdateRepository @Inject constructor(
             val owner = BuildConfig.GITHUB_OWNER
             val repo = BuildConfig.GITHUB_REPO
 
-            val releases = when (channel) {
+            // HoneyFlix: every build is tagged "-beta…-honey.N", so a Stable setting would filter them all
+            // out and always say "up to date". Always read the full list and accept every build.
+            val honey = repo == "HoneyFlix"
+            val effective = if (honey) UpdateChannel.BETA else channel
+            val releases = when (effective) {
                 UpdateChannel.STABLE -> {
                     val response = gitHubReleaseApi.getLatestRelease(owner = owner, repo = repo)
                     if (!response.isSuccessful) {
@@ -36,7 +40,7 @@ class UpdateRepository @Inject constructor(
                 }
             }
             val releaseWithAsset = ReleaseSelector
-                .eligibleReleases(releases, channel)
+                .eligibleReleases(releases, effective)
                 .firstNotNullOfOrNull { release ->
                     AbiSelector.chooseBestApkAsset(release.assets)?.let { asset ->
                         release to asset
