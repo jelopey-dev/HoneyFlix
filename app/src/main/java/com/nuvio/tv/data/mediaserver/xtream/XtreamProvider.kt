@@ -205,8 +205,39 @@ internal class XtreamProvider(private val http: OkHttpClient, private val cacheD
         return ServerPage(all.drop(start).take(limit).map { ServerIndexEntry(it.id, TrackingExternalIds(tmdb = it.tmdb), it.year) }, all.size)
     }
 
+    // ---------- Diagnostics (temporary) ----------
+    // When a title isn't matched, a non-playable "Your provider · not found" row explains why, so a
+    // photo of the source list tells us what went wrong on a provider we can't test against.
+    private val notes = ConcurrentHashMap<String, String>()
+    private val noteSeq = java.util.concurrent.atomic.AtomicInteger()
+    private fun note(msg: String, query: ServerTitleQuery): ServerIndexEntry {
+        val id = "x.${noteSeq.incrementAndGet()}"
+        notes[id] = msg
+        return ServerIndexEntry(id, query.ids, query.year)
+    }
+
     override suspend fun lookupTitle(session: ServerSession, library: ServerLibrary, query: ServerTitleQuery): List<ServerIndexEntry> {
-        val items = list(session, library.kind)
+        val what = if (library.kind == ServerMediaKind.SERIES) "series" else "movies"
+        val looked = "“${query.name ?: "?"}” ${query.year ?: ""} · TMDB ${query.ids.tmdb ?: "none"}"
+        return try {
+            val items = list(session, library.kind)
+            val found = findTitle(session, library, query, items)
+            if (found.isNotEmpty()) found
+            else {
+                val withIds = items.count { it.tmdb != null }
+                val near = query.name?.let(::norm)?.split(' ')?.firstOrNull { it.length > 3 }?.let { w ->
+                    items.asSequence().filter { norm(it.name).contains(w) }.take(3).joinToString(" | ") { it.name }
+                }.orEmpty()
+                listOf(note("Not found in ${items.size} $what ($withIds with TMDB ids). Looked for $looked." +
+                    (if (near.isNotEmpty()) " Similar: $near" else ""), query))
+            }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            listOf(note("Couldn't read the provider's $what: ${e.message ?: e.javaClass.simpleName}. Looked for $looked.", query))
+        }
+    }
+
+    private suspend fun findTitle(session: ServerSession, library: ServerLibrary, query: ServerTitleQuery, items: List<Entry>): List<ServerIndexEntry> {
         // 1. The provider lists a TMDB id for the title.
         query.ids.tmdb?.let { tmdb ->
             val byId = items.filter { it.tmdb == tmdb }
@@ -237,8 +268,17 @@ internal class XtreamProvider(private val http: OkHttpClient, private val cacheD
     }
 
     override suspend fun findEpisode(session: ServerSession, seriesItemId: String, season: Int, episode: Int): ServerEpisode? {
-        val json = seriesJson(session, seriesItemId.removePrefix("s."))
-        val ep = episodes(json).firstOrNull { (s, e) -> s == season && e.optInt("episode_num") == episode }?.second ?: return null
+        if (seriesItemId.startsWith("x.")) return ServerEpisode(seriesItemId, null)
+        val json = try { seriesJson(session, seriesItemId.removePrefix("s.")) } catch (e: ServerException) {
+            val id = "x.${noteSeq.incrementAndGet()}"; notes[id] = "Series found, but its episode list didn't load: ${e.message ?: e.failure}"
+            return ServerEpisode(id, null)
+        }
+        val eps = episodes(json)
+        val ep = eps.firstOrNull { (s, e) -> s == season && e.optInt("episode_num") == episode }?.second ?: run {
+            val id = "x.${noteSeq.incrementAndGet()}"
+            notes[id] = "Series found (${eps.size} episodes), but not S${season}E$episode. Seasons: ${eps.map { it.first }.distinct().joinToString(",")}"
+            return ServerEpisode(id, null)
+        }
         return ServerEpisode(
             itemId = "e.${ep.optString("id")}.${ep.optString("container_extension").ifBlank { "mp4" }}",
             premiereDate = ep.optJSONObject("info")?.optString("air_date")?.ifBlank { null }
@@ -248,6 +288,9 @@ internal class XtreamProvider(private val http: OkHttpClient, private val cacheD
     // ---------- Playing ----------
 
     override suspend fun candidates(session: ServerSession, itemId: String): List<ServerCandidate> {
+        if (itemId.startsWith("x.")) return listOf(ServerCandidate(
+            target = ServerPlaybackTarget(ServerItemRef(session.connection.id, itemId), itemId),
+            title = "Your provider · not found", description = notes[itemId] ?: "No match", filename = null, sizeBytes = null))
         val parts = itemId.split('.')
         if (parts.size < 3 || parts[0] !in setOf("m", "e")) return emptyList()
         val name = if (parts[0] == "m") list(session, ServerMediaKind.MOVIE).firstOrNull { it.id == itemId }?.name?.let(::cleanName) else null
