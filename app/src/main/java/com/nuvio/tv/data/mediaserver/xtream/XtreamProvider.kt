@@ -33,6 +33,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -54,7 +55,13 @@ import org.json.JSONObject
  * Item ids: "m.<streamId>.<ext>" movie, "s.<seriesId>" series, "e.<episodeId>.<ext>" episode.
  * The password is the stored session token; it is never logged.
  */
-internal class XtreamProvider(private val http: OkHttpClient) : ServerProvider {
+internal class XtreamProvider(private val http: OkHttpClient, private val cacheDir: java.io.File) : ServerProvider {
+    // Big lists can take a while on a slow provider: no overall time limit, just a generous read timeout.
+    private val bigHttp = http.newBuilder().callTimeout(0, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(90, java.util.concurrent.TimeUnit.SECONDS).build()
+    private val backgroundScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+    private val wanted = setOf("name", "stream_id", "series_id", "container_extension", "stream_icon", "cover",
+        "tmdb", "tmdb_id", "year", "releaseDate", "release_date", "rating", "added", "last_modified", "genre")
     override val id: String = "xtream"
     override val displayName: String = "IPTV provider (Xtream Codes)"
     override val capabilities: Set<ServerCapability> = setOf(ServerCapability.EXTERNAL_ID_LOOKUP, ServerCapability.SEARCH)
@@ -91,10 +98,10 @@ internal class XtreamProvider(private val http: OkHttpClient) : ServerProvider {
         )
     }
 
-    override suspend fun libraries(session: ServerSession): List<ServerLibrary> = listOf(
+    override suspend fun libraries(session: ServerSession): List<ServerLibrary> = also { warmUp(session) }.let { listOf(
         ServerLibrary(id = MOVIES, name = "Movies", kind = ServerMediaKind.MOVIE),
         ServerLibrary(id = SERIES, name = "Series", kind = ServerMediaKind.SERIES)
-    )
+    ) }
 
     // ---------- Browsing ----------
 
@@ -276,38 +283,140 @@ internal class XtreamProvider(private val http: OkHttpClient) : ServerProvider {
 
     // ---------- Provider API ----------
 
+    /**
+     * The provider's whole movie or series list. These can be tens of megabytes, so the reply is read
+     * as a stream (only the fields we use are kept), and saved on the box so later launches have it
+     * at once. A saved copy older than [LIST_TTL_MS] is still used while a fresh one loads.
+     */
     private suspend fun list(session: ServerSession, kind: ServerMediaKind): List<Entry> {
         val key = "${session.connection.id}:${kind.name}"
-        lists[key]?.takeIf { System.currentTimeMillis() - it.at < LIST_TTL_MS }?.let { return it.items }
+        lists[key]?.let { cached ->
+            if (System.currentTimeMillis() - cached.at > LIST_TTL_MS) refreshInBackground(session, kind, key)
+            return cached.items
+        }
         return listLocks.getOrPut(key) { Mutex() }.withLock {
-            lists[key]?.takeIf { System.currentTimeMillis() - it.at < LIST_TTL_MS }?.let { return@withLock it.items }
-            val series = kind == ServerMediaKind.SERIES
-            val arr = getJson(session, if (series) "get_series" else "get_vod_streams") as? JSONArray ?: JSONArray()
-            val items = withContext(Dispatchers.Default) {
-                (0 until arr.length()).mapNotNull { i ->
-                    val o = arr.optJSONObject(i) ?: return@mapNotNull null
-                    val name = o.optString("name").trim().ifBlank { return@mapNotNull null }
-                    if (series) Entry(
-                        id = "s.${o.optString("series_id")}", name = name, icon = o.optString("cover").ifBlank { null },
-                        tmdb = o.optString("tmdb").toLongOrNull() ?: o.optString("tmdb_id").toLongOrNull(),
-                        year = yearOf(o.optString("releaseDate").ifBlank { o.optString("release_date") }) ?: yearOf(o.optString("year")) ?: yearInName(name),
-                        ext = "", rating = o.optString("rating").toFloatOrNull()?.takeIf { it > 0 },
-                        added = o.optString("last_modified").toLongOrNull() ?: 0, plot = o.optString("plot").ifBlank { null },
-                        genre = o.optString("genre").ifBlank { null }
-                    ) else Entry(
-                        id = "m.${o.optString("stream_id")}.${o.optString("container_extension").ifBlank { "mp4" }}", name = name,
-                        icon = o.optString("stream_icon").ifBlank { null },
-                        tmdb = o.optString("tmdb").toLongOrNull() ?: o.optString("tmdb_id").toLongOrNull(),
-                        year = yearOf(o.optString("year")) ?: yearInName(name),
-                        ext = o.optString("container_extension"), rating = o.optString("rating").toFloatOrNull()?.takeIf { it > 0 },
-                        added = o.optString("added").toLongOrNull() ?: 0, plot = null, genre = null
-                    )
-                }
+            lists[key]?.let { return@withLock it.items }
+            readDisk(key)?.let { saved ->
+                lists[key] = saved
+                if (System.currentTimeMillis() - saved.at > LIST_TTL_MS) refreshInBackground(session, kind, key)
+                return@withLock saved.items
             }
-            lists[key] = Listing(System.currentTimeMillis(), items)
-            items
+            download(session, kind, key)
         }
     }
+
+    private val refreshing = ConcurrentHashMap.newKeySet<String>()
+    private fun refreshInBackground(session: ServerSession, kind: ServerMediaKind, key: String) {
+        if (!refreshing.add(key)) return
+        backgroundScope.launch {
+            try { listLocks.getOrPut(key) { Mutex() }.withLock { download(session, kind, key) } } catch (_: Exception) {} finally { refreshing.remove(key) }
+        }
+    }
+
+    /** Starts loading both lists (after sign-in / when HoneyFlix opens), so the first movie doesn't wait. */
+    private fun warmUp(session: ServerSession) {
+        for (k in listOf(ServerMediaKind.MOVIE, ServerMediaKind.SERIES)) {
+            val key = "${session.connection.id}:${k.name}"
+            if (lists.containsKey(key)) continue
+            backgroundScope.launch { runCatching { list(session, k) } }
+        }
+    }
+
+    private suspend fun download(session: ServerSession, kind: ServerMediaKind, key: String): List<Entry> = withContext(Dispatchers.IO) {
+        val series = kind == ServerMediaKind.SERIES
+        val url = ("${session.connection.address}/player_api.php").toHttpUrlOrNull()?.newBuilder()?.apply {
+            addQueryParameter("username", session.connection.userName); addQueryParameter("password", session.token)
+            addQueryParameter("action", if (series) "get_series" else "get_vod_streams")
+        }?.build() ?: throw ServerException(ServerFailure.NOT_FOUND)
+        val req = Request.Builder().url(url).header("User-Agent", "HoneyFlix/1.0").build()
+        val items = try {
+            bigHttp.newCall(req).execute().use { r ->
+                if (r.code == 401 || r.code == 403) throw ServerException(ServerFailure.AUTH_REQUIRED)
+                if (!r.isSuccessful) throw ServerException(ServerFailure.UNREACHABLE, "The provider returned error ${r.code}")
+                val body = r.body ?: throw ServerException(ServerFailure.UNREACHABLE)
+                parseList(android.util.JsonReader(body.charStream()), series)
+            }
+        } catch (e: ServerException) { throw e } catch (e: Exception) {
+            throw ServerException(ServerFailure.UNREACHABLE, "Couldn't load the provider's ${if (series) "series" else "movies"}")
+        }
+        val listing = Listing(System.currentTimeMillis(), items)
+        lists[key] = listing
+        runCatching { writeDisk(key, listing) }
+        items
+    }
+
+    private fun parseList(reader: android.util.JsonReader, series: Boolean): List<Entry> {
+        val out = ArrayList<Entry>(8192)
+        reader.isLenient = true
+        if (reader.peek() != android.util.JsonToken.BEGIN_ARRAY) return out
+        reader.beginArray()
+        while (reader.hasNext()) {
+            if (reader.peek() != android.util.JsonToken.BEGIN_OBJECT) { reader.skipValue(); continue }
+            val f = HashMap<String, String>(16)
+            reader.beginObject()
+            while (reader.hasNext()) {
+                val name = reader.nextName()
+                if (name in wanted) {
+                    when (reader.peek()) {
+                        android.util.JsonToken.STRING -> f[name] = reader.nextString()
+                        android.util.JsonToken.NUMBER -> f[name] = reader.nextString()
+                        android.util.JsonToken.BOOLEAN -> f[name] = reader.nextBoolean().toString()
+                        else -> reader.skipValue()
+                    }
+                } else reader.skipValue()
+            }
+            reader.endObject()
+            val name = f["name"]?.trim().orEmpty()
+            if (name.isEmpty()) continue
+            val tmdb = f["tmdb"]?.toLongOrNull() ?: f["tmdb_id"]?.toLongOrNull()
+            out += if (series) Entry(
+                id = "s.${f["series_id"].orEmpty()}", name = name, icon = f["cover"]?.ifBlank { null }, tmdb = tmdb,
+                year = yearOf(f["releaseDate"] ?: f["release_date"]) ?: yearOf(f["year"]) ?: yearInName(name),
+                ext = "", rating = f["rating"]?.toFloatOrNull()?.takeIf { it > 0 },
+                added = f["last_modified"]?.toLongOrNull() ?: 0, plot = null, genre = f["genre"]?.ifBlank { null }
+            ) else Entry(
+                id = "m.${f["stream_id"].orEmpty()}.${f["container_extension"]?.ifBlank { null } ?: "mp4"}", name = name,
+                icon = f["stream_icon"]?.ifBlank { null }, tmdb = tmdb,
+                year = yearOf(f["year"]) ?: yearInName(name),
+                ext = f["container_extension"].orEmpty(), rating = f["rating"]?.toFloatOrNull()?.takeIf { it > 0 },
+                added = f["added"]?.toLongOrNull() ?: 0, plot = null, genre = null
+            )
+        }
+        reader.endArray()
+        return out
+    }
+
+    // Saved copy: one line per title, tab-separated (no passwords or links are stored).
+    private fun diskFile(key: String) = java.io.File(cacheDir, "xtream_" + key.replace(Regex("[^A-Za-z0-9_.-]"), "_") + ".tsv")
+    private fun writeDisk(key: String, l: Listing) {
+        cacheDir.mkdirs()
+        val tmp = java.io.File(cacheDir, diskFile(key).name + ".tmp")
+        tmp.bufferedWriter().use { w ->
+            w.write("v1\t${l.at}\n")
+            for (e in l.items) {
+                w.write(listOf(e.id, e.name, e.icon.orEmpty(), e.tmdb?.toString().orEmpty(), e.year?.toString().orEmpty(),
+                    e.ext, e.rating?.toString().orEmpty(), e.added.toString(), e.genre.orEmpty())
+                    .joinToString("\t") { it.replace('\t', ' ').replace('\n', ' ') })
+                w.write("\n")
+            }
+        }
+        tmp.renameTo(diskFile(key))
+    }
+    private fun readDisk(key: String): Listing? = runCatching {
+        val f = diskFile(key); if (!f.exists()) return null
+        f.bufferedReader().use { r ->
+            val head = r.readLine()?.split('\t') ?: return null
+            if (head.firstOrNull() != "v1") return null
+            val at = head.getOrNull(1)?.toLongOrNull() ?: 0L
+            val items = ArrayList<Entry>(8192)
+            r.forEachLine { line ->
+                val c = line.split('\t'); if (c.size < 9) return@forEachLine
+                items += Entry(c[0], c[1], c[2].ifEmpty { null }, c[3].toLongOrNull(), c[4].toIntOrNull(), c[5],
+                    c[6].toFloatOrNull(), c[7].toLongOrNull() ?: 0, null, c[8].ifEmpty { null })
+            }
+            Listing(at, items)
+        }
+    }.getOrNull()
 
     private suspend fun seriesJson(session: ServerSession, seriesId: String): JSONObject {
         val key = "${session.connection.id}:$seriesId"
@@ -364,7 +473,7 @@ internal class XtreamProvider(private val http: OkHttpClient) : ServerProvider {
     private companion object {
         const val MOVIES = "movies"
         const val SERIES = "series"
-        const val LIST_TTL_MS = 30 * 60_000L
+        const val LIST_TTL_MS = 6 * 3_600_000L
 
         fun normalize(input: String): String? {
             var v = input.trim().trimEnd('/')

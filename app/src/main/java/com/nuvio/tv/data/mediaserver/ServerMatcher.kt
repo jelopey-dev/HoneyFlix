@@ -165,7 +165,9 @@ class ServerMatcher internal constructor(
     ): List<String>? {
         val lookup = lookup(connection, kind, query, libraries, forceRefresh)
         var answered = false
-        val itemIds = withTimeoutOrNull(LOOKUP_WAIT_MS) { lookup.result.await().also { answered = true } }
+        // HoneyFlix: the first look at an IPTV provider downloads its whole list, which can take a while.
+        val wait = if (connection.providerId == "xtream") XTREAM_LOOKUP_WAIT_MS else LOOKUP_WAIT_MS
+        val itemIds = withTimeoutOrNull(wait) { lookup.result.await().also { answered = true } }
         if (!answered) throw ServerException(ServerFailure.INCOMPLETE)
         return itemIds
     }
@@ -319,6 +321,7 @@ class ServerMatcher internal constructor(
         const val INDEX_WAIT_MS = 12_000L
         const val LOOKUP_TTL_MS = 10 * 60_000L
         const val LOOKUP_WAIT_MS = 6_000L
+        const val XTREAM_LOOKUP_WAIT_MS = 75_000L
         const val LOOKUP_CACHE_SIZE = 300
         const val CONVERSION_TIMEOUT_MS = 5_000L
         const val META_WAIT_MS = 3_000L

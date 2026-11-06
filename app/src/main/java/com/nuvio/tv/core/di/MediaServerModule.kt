@@ -31,6 +31,7 @@ object MediaServerModule {
     @Provides
     @Singleton
     fun repository(
+        @dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context,
         persistence: AndroidServerPersistence,
         identity: SyncClientIdentity,
         profileDataStore: ProfileDataStore
@@ -49,7 +50,7 @@ object MediaServerModule {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val repository = ServerRepository(
             persistence = persistence,
-            providers = listOf(XtreamProvider(http), JellyfinProvider(http, clientIdentity), EmbyProvider(http, clientIdentity)),
+            providers = listOf(XtreamProvider(http, java.io.File(context.cacheDir, "xtream")), JellyfinProvider(http, clientIdentity), EmbyProvider(http, clientIdentity)),
             scope = scope
         )
         scope.launch { profileDataStore.activeProfileId.collect(repository::selectProfile) }
